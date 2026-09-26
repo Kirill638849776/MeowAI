@@ -2,6 +2,9 @@
 <p align="center">
   <img src="https://img.shields.io/badge/version-BETA-yellow" alt="Version">
   <img src="https://img.shields.io/badge/license-Custom-red" alt="License">
+  <a href="https://github.com/matvey2222222222/MeowAI/releases">
+    <img src="https://img.shields.io/github/downloads/matvey2222222222/MeowAI/total.svg" alt="Downloads">
+  </a>
   <img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2Fmatvey2222222222%2FMeowAI&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=Views&edge_flat=false" alt="Views">
 </p>
 
@@ -40,6 +43,12 @@
 - Это **БЕТА**. Программа может работать нестабильно.
 - Ответы могут быть неточными — **всегда проверяйте факты в первоисточниках**.
 - Автор не несёт ответственности за любой ущерб от использования ПО.
+
+---
+
+## 📥 Скачать
+
+Готовые сборки доступны в разделе **[Releases](https://github.com/matvey2222222222/MeowAI/releases)**.
 
 ---
 
