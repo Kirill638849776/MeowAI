@@ -1,0 +1,63 @@
+name: Build EXE
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write  # нужно для прикрепления файлов к релизу
+
+jobs:
+  # Проверка, что релиз не 1.0.0
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - name: Check release tag
+        id: check
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          echo "Release tag: $TAG"
+          if [[ "$TAG" == "v1.0.0" || "$TAG" == "1.0.0" ]]; then
+            echo "❌ Skipping build for release 1.0.0"
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Building for release $TAG"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    needs: check-version
+    if: needs.check-version.outputs.should_build == 'true'
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller requests beautifulsoup4
+
+      - name: Build EXE with PyInstaller
+        run: |
+          pyinstaller --onefile --windowed --name MeowAI MeowAI_GUI.py
+
+      - name: Rename artifact
+        shell: bash
+        run: |
+          mv dist/MeowAI.exe dist/MeowAI-${{ github.event.release.tag_name }}.exe
+
+      - name: Upload EXE to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: dist/MeowAI-${{ github.event.release.tag_name }}.exe
+          token: ${{ secrets.GITHUB_TOKEN }}
