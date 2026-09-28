@@ -2,7 +2,7 @@ name: Build EXE
 
 on:
   release:
-    types: [published]
+    types: [published]  # запускается ТОЛЬКО при публикации нового релиза
 
 permissions:
   contents: write  # нужно для прикрепления файлов к релизу
@@ -48,7 +48,7 @@ jobs:
 
       - name: Build EXE with PyInstaller
         run: |
-          pyinstaller --onefile --windowed --name MeowAI MeowAI_GUI.py
+          pyinstaller --onefile --windowed --name MeowAI meowai.py
 
       - name: Rename artifact
         shell: bash
