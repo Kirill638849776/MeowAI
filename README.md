@@ -8,7 +8,9 @@
   </a>
   <img src="https://hits.sh/github.com/matvey2222222222/MeowAI.svg?label=Views" alt="Views">
 </p>
-
+---
+<img src="screenshot.png" alt="Скриншот MeowAI" width="600">
+---
 <h1 align="center">🐱 MeowAI — Бета-версия 1.0.0</h1>
 
 <p align="center">
