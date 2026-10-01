@@ -1,0 +1,44 @@
+{
+  "format": "meowai-language",
+  "version": "1.0",
+  "language": "en",
+  "name": "English",
+  "strings": {
+    "language_name": "English",
+
+    "welcome": "Hello! I am MeowAI.",
+    "ready": "MeowAI is ready.",
+    "thinking": "Thinking...",
+    "searching": "Searching...",
+    "error": "An error occurred.",
+    "unknown": "I don't know the answer to that yet.",
+
+    "based_on": "I am based on Python and use several technologies and services.",
+    "programming_language": "I am written in Python.",
+    "technologies": "I use Python, Tkinter, HTTP requests, JSON, Wikipedia API and DuckDuckGo.",
+    "services": "I can use Wikipedia and DuckDuckGo for online information.",
+    "libraries": "My main libraries include Tkinter, requests and BeautifulSoup.",
+
+    "neural_network": "This version of MeowAI is not a separately trained neural network. It uses algorithms, a knowledge base, context, safe math evaluation and search services.",
+
+    "language_package": "English language package",
+    "language_package_loaded": "English language package loaded successfully.",
+    "language_package_missing": "English language package is missing.",
+    "language_package_invalid": "English language package is invalid.",
+
+    "commands": "Commands",
+    "help": "Help",
+    "settings": "Settings",
+    "about": "About MeowAI",
+    "clear": "Clear chat",
+    "exit": "Exit",
+
+    "user": "You",
+    "assistant": "MeowAI",
+
+    "online": "Online",
+    "offline": "Offline",
+    "connected": "Connected",
+    "disconnected": "Disconnected"
+  }
+}
