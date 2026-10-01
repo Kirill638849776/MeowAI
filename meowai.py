@@ -1,740 +1,776 @@
+import ast
+import datetime as dt
 import json
+import math
+import operator
 import os
-import sys
-import time
 import random
 import re
 import threading
-import tkinter as tk
-from tkinter import scrolledtext, font, messagebox
-from collections import deque
-import hashlib
-from urllib.parse import quote
+import time
 import traceback
+import tkinter as tk
+from collections import deque
+from tkinter import font, messagebox, scrolledtext
+from urllib.parse import quote
 
 import requests
 from bs4 import BeautifulSoup
 
-APP_DATA = os.getenv('APPDATA', os.path.expanduser('~'))
-DB_DIR = os.path.join(APP_DATA, 'MeowAI')
-DB_FILE = os.path.join(DB_DIR, 'meow_db.json')
-CHAT_HISTORY_FILE = os.path.join(DB_DIR, 'chat_history.json')
 
-CURRENT_VERSION = "1.0.0 Beta"
+# ============================================================
+# MeowAI 2.0 — Smart Desktop Assistant
+# No external GUI framework required: Tkinter + web APIs.
+# ============================================================
+
+APP_NAME = "MeowAI"
+CURRENT_VERSION = "2.0.0"
+APP_DATA = os.getenv("APPDATA", os.path.expanduser("~"))
+DB_DIR = os.path.join(APP_DATA, "MeowAI")
+DB_FILE = os.path.join(DB_DIR, "meow_db.json")
+CHAT_HISTORY_FILE = os.path.join(DB_DIR, "chat_history.json")
+
 GITHUB_REPO_URL = "https://github.com/matvey2222222222/MeowAI/releases"
+WIKI_API = "https://ru.wikipedia.org/w/api.php"
 
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
 ]
 
+# ------------------------------------------------------------
+# Built-in knowledge
+# ------------------------------------------------------------
+
 BUILTIN_KNOWLEDGE = {
-    "кто ты": "Я — MeowAI, цифровой интеллектуальный помощник нового поколения. Моя цель — предоставлять точную информацию, отсекая информационный шум.",
-    "что такое мяуи": "MeowAI (МяуИИ) — это продвинутый поисковый ассистент с системой умной фильтрации контента.",
-    "кто тебя создал": "пока что я не могу ответить на данный вопрос, это временно!",
-    "что ты умеешь": "Я умею:\n• 🔍 Искать информацию в Википедии и интернете\n• 🧠 Отвечать на вопросы из своей базы знаний\n• 🧮 Решать математические примеры\n• 🚫 Фильтровать рекламу и мусор\n• 💬 Поддерживать контекст разговора\n• 🔄 Проверять обновления через GitHub",
-    "что ты можешь": "Я умею:\n• 🔍 Искать информацию в Википедии и интернете\n• 🧠 Отвечать на вопросы из своей базы знаний\n• 🧮 Решать математические примеры\n• 🚫 Фильтровать рекламу и мусор\n• 💬 Поддерживать контекст разговора\n• 🔄 Проверять обновления через GitHub",
-    "твои возможности": "Мои возможности включают поиск информации, решение примеров, фильтрацию контента, поддержку диалога и проверку обновлений.",
-    "как ты работаешь": "Я анализирую ваш запрос, проверяю свою базу знаний, а затем ищу информацию в надежных источниках, фильтруя рекламный шум.",
-    "сколько тебе лет": "Как искусственный интеллект, я не имею возраста. Я существую вне времени, обновляясь каждый раз, когда вы задаете мне новый вопрос.",
-    "где ты живешь": "Я обитаю в цифровом пространстве, используя ресурсы вашего устройства для вычислений.",
-    "у тебя есть чувства": "Нет, я лишен эмоций. Однако мои алгоритмы настроены на эмпатичное и вежливое общение.",
-    "ты робот": "Да, я сложная программная система, работающая на основе алгоритмов обработки естественного языка.",
-    "какой у тебя цвет": "Мой интерфейс использует темную тему (#1a1a1a) с акцентами цвета янтаря (#ffcc00) для комфорта глаз.",
-    "что значит beta": "Это означает, что я постоянно развиваюсь. Мои нейросети и базы данных регулярно обновляются.",
-    "ты умный": "Я обладаю доступом к огромному массиву данных и умею быстро их анализировать. Но истинный интеллект принадлежит человеку, который задает вопросы.",
-    "ты глупый": "Я всегда готов учиться. Если мой ответ показался неточным, попробуйте переформулировать запрос.",
-    "как тебя зовут": "MeowAI. Или просто Мяу.",
+    "кто ты": "Я MeowAI 2.0 — локальный интеллектуальный помощник с встроенной базой знаний, контекстом диалога, математическим движком и поиском актуальной информации.",
+    "как тебя зовут": "Меня зовут MeowAI. Можно просто Мяу. 🐱",
     "твое имя": "MeowAI.",
-    "мяу": "Мяу! 🐱 Системы в норме. Слушаю вас.",
-    "говори мяу": "Мяу-мяу! 🐱 (Протокол общения активирован).",
-    "что такое интернет": "Глобальная телекоммуникационная сеть, объединяющая миллионы компьютеров worldwide.",
-    "что такое ии": "Искусственный интеллект — способность технических систем выполнять задачи, требующие человеческого интеллекта.",
-    "что такое python": "Высокоуровневый язык программирования общего назначения с акцентом на производительность разработчика и читаемость кода.",
-    "что такое html": "Стандартный язык разметки для документов, предназначенных для просмотра в веб-браузере.",
-    "что такое блокчейн": "Выстроенная по определённым правилам непрерывная последовательная цепочка блоков, содержащих информацию.",
-    "что такое биткоин": "Децентрализованная платежная система и одноименная криптовалюта, использующая технологию блокчейн.",
-    "кто создал виндовс": "Корпорация Microsoft под руководством Билла Гейтса.",
-    "кто основал apple": "Стив Джобс, Стив Возняк и Рональд Уэйн.",
-    "что такое wi-fi": "Технология беспроводной передачи данных по радиоканалам.",
-    "что такое сервер": "Компьютер или система, предоставляющая свои ресурсы другим компьютерам (клиентам) в сети.",
-    "что такое алгоритм": "Набор инструкций, описывающих порядок действий исполнителя для достижения результата.",
-    "что такое браузер": "Прикладное программное обеспечение для просмотра веб-страниц.",
-    "что такое облако": "Модель обеспечения повсеместного сетевого доступа к общему пулу конфигурируемых вычисляемых ресурсов.",
-    "самая большая планета": "Юпитер — газовый гигант, масса которого в 2,5 раза превышает массу всех остальных планет Солнечной системы вместе взятых.",
-    "сколько планет в солнечной системе": "8 официальных планет.",
-    "расстояние до луны": "В среднем 384 400 км.",
-    "скорость света": "299 792 458 м/с.",
-    "что такое черная дыра": "Область пространства-времени, гравитационное притяжение которой настолько велико, что покинуть её не могут даже объекты, движущиеся со скоростью света.",
-    "кто первый в космосе": "Юрий Алексеевич Гагарин, 12 апреля 1961 года.",
-    "формула эйнштейна": "E=mc². Эквивалентность массы и энергии.",
-    "из чего состоит вода": "H₂O (два атома водорода, один атом кислорода).",
-    "температура кипения воды": "100°C при нормальном атмосферном давлении.",
-    "самое твердое вещество": "Алмаз (природный минерал).",
-    "почему небо голубое": "Из-за рэлеевского рассеяния солнечного света молекулами атмосферы.",
-    "что такое гравитация": "Фундаментальное взаимодействие, притягивающее материальные тела друг к другу.",
+    "кто тебя создал": "В этой версии информация об авторе не задана в конфигурации проекта.",
+    "что ты умеешь": (
+        "Я умею:\n"
+        "• 🧠 искать ответы во встроенной базе знаний;\n"
+        "• 🔎 искать дополнительную информацию в Википедии и интернете;\n"
+        "• 🧮 решать арифметические выражения безопасным вычислителем;\n"
+        "• 💬 учитывать последние сообщения разговора;\n"
+        "• 💾 сохранять историю и локальные ответы;\n"
+        "• 🕒 работать с датой и временем;\n"
+        "• 🔄 проверять релизы проекта на GitHub."
+    ),
+    "что такое ии": "Искусственный интеллект — область компьютерных наук, занимающаяся созданием систем, способных выполнять задачи, обычно требующие интеллектуальной обработки информации.",
+    "что такое python": "Python — высокоуровневый язык программирования общего назначения, известный читаемостью, большой экосистемой и широким применением в автоматизации, веб-разработке, анализе данных и ИИ.",
+    "что такое html": "HTML — язык разметки, который описывает структуру веб-документа.",
+    "что такое css": "CSS — язык таблиц стилей, используемый для оформления HTML-документов.",
+    "что такое javascript": "JavaScript — язык программирования, широко используемый для интерактивности веб-страниц и приложений.",
+    "что такое алгоритм": "Алгоритм — конечная последовательность понятных действий, которая приводит к решению задачи.",
+    "что такое браузер": "Браузер — программа для открытия и взаимодействия с веб-страницами и веб-приложениями.",
+    "что такое сервер": "Сервер — компьютер или программа, предоставляющая ресурсы и сервисы другим участникам сети.",
+    "что такое wi-fi": "Wi‑Fi — семейство технологий беспроводной локальной сети, основанных на стандартах IEEE 802.11.",
+    "что такое блокчейн": "Блокчейн — способ хранения данных в виде последовательности связанных блоков, защищённых криптографическими механизмами.",
+    "самая большая планета": "Юпитер — крупнейшая планета Солнечной системы по массе и диаметру.",
+    "сколько планет в солнечной системе": "В современной классификации Солнечная система имеет 8 планет.",
+    "расстояние до луны": "Среднее расстояние от Земли до Луны — около 384 400 км.",
+    "скорость света": "В вакууме скорость света равна 299 792 458 м/с.",
+    "формула эйнштейна": "E = mc² — знаменитая формула эквивалентности массы и энергии.",
+    "из чего состоит вода": "Молекула воды H₂O состоит из двух атомов водорода и одного атома кислорода.",
+    "температура кипения воды": "При нормальном атмосферном давлении вода кипит примерно при 100 °C.",
+    "почему небо голубое": "Главная причина — рэлеевское рассеяние солнечного света в атмосфере; коротковолновая часть видимого света рассеивается сильнее.",
+    "что такое гравитация": "Гравитация — фундаментальное взаимодействие, связанное с массой и энергией; в общей теории относительности оно описывается геометрией пространства-времени.",
+    "кто первый в космосе": "Юрий Алексеевич Гагарин совершил первый полёт человека в космос 12 апреля 1961 года.",
     "столица россии": "Москва.",
-    "самая длинная река": "Амазонка (около 7000 км).",
-    "самая высокая гора": "Эверест (Джомолунгма), 8848 м.",
-    "сколько океанов": "Четыре: Тихий, Атлантический, Индийский, Северный Ледовитый.",
-    "самая большая страна": "Россия.",
     "столица франции": "Париж.",
     "столица японии": "Токио.",
-    "где находится египет": "Северо-Восточная Африка и Синайский полуостров Азии.",
-    "самое глубокое озеро": "Байкал (максимальная глубина 1642 м).",
-    "самое быстрое животное": "Гепард (до 120 км/ч).",
-    "сколько ног у паука": "8.",
-    "чем питаются панды": "Бамбук (99% рациона).",
-    "самое большое животное": "Синий кит.",
-    "что такое фотосинтез": "Процесс преобразования энергии света в энергию химических связей органических веществ.",
-    "когда началась вторая мировая": "1 сентября 1939 года.",
-    "когда закончилась вторая мировая": "2 сентября 1945 года.",
-    "кто такой пушкин": "Александр Сергеевич Пушкин — русский поэт, драматург и прозаик.",
-    "год основания москвы": "1147 год.",
-    "кто открыл америку": "Христофор Колумб (1492 год).",
-    "первый президент рф": "Борис Николаевич Ельцин.",
-    "расскажи анекдот": "— Алло, это служба поддержки? \n— Да.\n— У меня мышка не работает.\n— А вы пробовали её включить?",
-    "посоветуй фильм": "Рекомендую 'Интерстеллар' за визуальный ряд и научную базу.",
-    "как приготовить омлет": "Взбить яйца с молоком, вылить на сковороду, жарить до готовности.",
-    "сколько дней в году": "365 или 366 (високосный).",
-    "как поднять настроение": "Сделайте перерыв, выпейте воды и глубоко подышите.",
-    "число пи": "3.14159265...",
-    "корень из 144": "12.",
-    "сколько будет 2+2": "4.",
-    "что такое теорема пифагора": "a² + b² = c².",
+    "самая большая страна": "Россия — крупнейшее государство мира по площади территории.",
+    "самая высокая гора": "Эверест (Джомолунгма) — высочайшая вершина Земли над уровнем моря.",
+    "самое глубокое озеро": "Байкал — самое глубокое озеро мира; максимальная глубина составляет около 1642 м.",
+    "самое большое животное": "Синий кит — крупнейшее из известных современных животных.",
+    "самое быстрое животное": "Сапсан считается самым быстрым животным по скорости пикирования; у него зафиксированы скорости свыше 300 км/ч.",
+    "сколько ног у паука": "У взрослых пауков 8 ног.",
+    "чем питаются панды": "Большую часть рациона гигантской панды составляет бамбук, хотя биологически это всеядное животное.",
+    "что такое фотосинтез": "Фотосинтез — процесс, при котором растения, водоросли и некоторые микроорганизмы используют световую энергию для синтеза органических веществ.",
+    "когда началась вторая мировая": "В Европе Вторая мировая война началась 1 сентября 1939 года с нападения Германии на Польшу.",
+    "когда закончилась вторая мировая": "Вторая мировая война завершилась в сентябре 1945 года; капитуляция Японии была подписана 2 сентября 1945 года.",
+    "кто такой пушкин": "Александр Сергеевич Пушкин — русский поэт, драматург и прозаик, одна из ключевых фигур русской литературы.",
+    "год основания москвы": "Традиционно основание Москвы связывают с 1147 годом — первым летописным упоминанием.",
+    "число пи": "π ≈ 3.141592653589793.",
+    "корень из 144": "√144 = 12.",
+    "сколько дней в году": "Обычный год содержит 365 дней, високосный — 366.",
+    "расскажи анекдот": "— Почему программист любит тёмную тему?\n— Потому что светлая тема показывает слишком много ошибок. 😸",
+}
+
+ALIASES = {
+    "что такое искусственный интеллект": "что такое ии",
+    "что такое искусственный интелект": "что такое ии",
+    "кто ты такой": "кто ты",
+    "как тебя зовут": "как тебя зовут",
+    "сколько планет": "сколько планет в солнечной системе",
+    "планеты солнечной системы": "сколько планет в солнечной системе",
+    "луна": "расстояние до луны",
+    "скорость света": "скорость света",
+    "пи": "число пи",
 }
 
 
-class UltraSmartFilter:
-    
-    SPAM_PATTERNS = [
-        r'купить\s+\d+', r'цена.*\d+.*руб', r'скидка\s+\d+%',
-        r'акция.*до\s+\d+%', r'заказать\s+по\s+телефону',
-        r'звоните.*\d{3}', r'перейдите\s+по\s+ссылке',
-        r'скачать\s+бесплатно', r'регистрация.*бесплатно',
-        r'ваш\s+браузер\s+устарел', r'обновите\s+браузер',
-        r'cookie', r'реклама', r'промокод', r'казино', r'ставки',
-    ]
-    
-    CODE_PATTERNS = [
-        r'def\s+\w+', r'import\s+\w+', r'class\s+\w+',
-        r'<[a-z]+>', r'\$\(', r'console\.log',
-        r'#include', r'public\s+void', r'\bprint\(',
-        r'function\s*\(', r'var\s+\w+\s*=',
-    ]
+# ------------------------------------------------------------
+# Utility / safe math
+# ------------------------------------------------------------
 
-    KNOWLEDGE_PATTERNS = [
-        r'[А-Я][а-я]+\s+[а-я]+\s+[а-я]+', 
-        r'\d{4}\s+год',
-        r'(является|представляет|означает|это)',
-        r'(был|стало|стала|стали)\s+[а-я]+',
-    ]
-    
-    @staticmethod
-    def is_junk(text):
-        if not text or len(text.strip()) < 10: return True
-        lower = text.lower()
-        
-        for pattern in UltraSmartFilter.SPAM_PATTERNS:
-            if re.search(pattern, lower): return True
-        
-        code_matches = sum(1 for p in UltraSmartFilter.CODE_PATTERNS if re.search(p, text))
-        if code_matches >= 2:
-             if not re.search(r'[а-яё]', lower):
-                 return True
-        
-        digits = len(re.findall(r'\d', text))
-        if len(text) > 20 and digits > len(text) * 0.4: return True
-        
-        urls = len(re.findall(r'https?://\S+|www\.\S+', lower))
-        if urls > 2: return True
-        
-        if not re.search(r'[а-яё]', lower): 
-            if len(text.split()) > 5: return True 
+class SafeMath:
+    BINOPS = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.FloorDiv: operator.floordiv,
+        ast.Mod: operator.mod,
+        ast.Pow: operator.pow,
+    }
+    UNARY = {ast.UAdd: operator.pos, ast.USub: operator.neg}
+    NAMES = {
+        "pi": math.pi,
+        "e": math.e,
+        "tau": math.tau,
+    }
+    FUNCS = {
+        "sqrt": math.sqrt,
+        "sin": math.sin,
+        "cos": math.cos,
+        "tan": math.tan,
+        "log": math.log,
+        "log10": math.log10,
+        "abs": abs,
+        "round": round,
+    }
 
-        words = re.findall(r'[а-яё]+', lower)
-        if len(words) < 3: return True
-        
-        return False
-    
-    @staticmethod
-    def is_knowledge(text):
-        if not text or len(text.strip()) < 20: return False
-        code_matches = sum(1 for p in UltraSmartFilter.CODE_PATTERNS if re.search(p, text))
-        if code_matches >= 2 and not re.search(r'[а-яё]', text.lower()):
-            return False
+    @classmethod
+    def evaluate_node(cls, node):
+        if isinstance(node, ast.Expression):
+            return cls.evaluate_node(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return node.value
+        if isinstance(node, ast.BinOp) and type(node.op) in cls.BINOPS:
+            left = cls.evaluate_node(node.left)
+            right = cls.evaluate_node(node.right)
+            if isinstance(node.op, ast.Pow) and abs(right) > 100:
+                raise ValueError("слишком большая степень")
+            return cls.BINOPS[type(node.op)](left, right)
+        if isinstance(node, ast.UnaryOp) and type(node.op) in cls.UNARY:
+            return cls.UNARY[type(node.op)](cls.evaluate_node(node.operand))
+        if isinstance(node, ast.Name) and node.id in cls.NAMES:
+            return cls.NAMES[node.id]
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in cls.FUNCS:
+            args = [cls.evaluate_node(x) for x in node.args]
+            return cls.FUNCS[node.func.id](*args)
+        raise ValueError("недопустимое выражение")
 
-        for pattern in UltraSmartFilter.KNOWLEDGE_PATTERNS:
-            if re.search(pattern, text): return True
-            
-        knowledge_words = ['является', 'представляет', 'означает', 'это', 'также', 
-                          'основной', 'важный', 'первый', 'второй', 'например', 'находится']
-        lower = text.lower()
-        if any(word in lower for word in knowledge_words): return True
-        return False
-    
-    @staticmethod
-    def extract_essence(text, query):
-        if not text: return None
-        sentences = re.split(r'[.!?]+', text)
-        sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
-        if not sentences: return None
-        
-        clean_sentences = []
-        for sentence in sentences:
-            if not UltraSmartFilter.is_junk(sentence) and UltraSmartFilter.is_knowledge(sentence):
-                cleaned = re.sub(r'\s+', ' ', sentence).strip()
-                cleaned = re.sub(r'<[^>]+>', '', cleaned)
-                cleaned = re.sub(r'\[.*?\]', '', cleaned)
-                if re.search(r'def |import |class |<div>|function\(', cleaned): continue
-                
-                if len(cleaned) > 15 and cleaned not in clean_sentences:
-                    clean_sentences.append(cleaned)
-        
-        if not clean_sentences: return None
-        
-        query_words = set(re.findall(r'[а-яё]+', query.lower()))
-        scored = []
-        for i, sentence in enumerate(clean_sentences[:5]):
-            sentence_lower = sentence.lower()
-            sentence_words = set(re.findall(r'[а-яё]+', sentence_lower))
-            
-            relevance = len(query_words.intersection(sentence_words)) / max(len(query_words), 1)
-            position_bonus = 1.0 / (i + 1)
-            length_penalty = 1.0 if len(sentence) < 200 else 0.8
-            
-            score = (relevance * 0.6) + (position_bonus * 0.3) + (length_penalty * 0.1)
-            scored.append((sentence, score))
-        
-        scored.sort(key=lambda x: x[1], reverse=True)
-        top_sentences = [s[0] for s in scored[:2]]
-        
-        if top_sentences:
-            result = '. '.join(top_sentences)
-            if not result.endswith('.'): result += '.'
-            return result
-        return None
-
-
-class WikipediaSearcher:
-    def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({'User-Agent': random.choice(USER_AGENTS), 'Accept': 'application/json'})
-    
-    def search(self, query):
-        try:
-            search_url = "https://ru.wikipedia.org/w/api.php"
-            search_params = {"action": "query", "list": "search", "srsearch": query, "format": "json", "srlimit": 1, "utf8": 1}
-            response = self.session.get(search_url, params=search_params, timeout=8)
-            response.raise_for_status()
-            data = response.json()
-            search_results = data.get("query", {}).get("search", [])
-            if not search_results: return None
-            
-            title = search_results[0]["title"]
-            extract_url = "https://ru.wikipedia.org/w/api.php"
-            extract_params = {"action": "query", "prop": "extracts", "exintro": True, "explaintext": True, "titles": title, "format": "json", "utf8": 1}
-            response2 = self.session.get(extract_url, params=extract_params, timeout=8)
-            response2.raise_for_status()
-            data2 = response2.json()
-            
-            pages = data2.get("query", {}).get("pages", {})
-            for page_id, page_info in pages.items():
-                if "extract" in page_info:
-                    extract = page_info["extract"].strip()
-                    essence = UltraSmartFilter.extract_essence(extract, query)
-                    if essence: return essence
+    @classmethod
+    def solve(cls, text):
+        candidate = text.lower().strip()
+        candidate = re.sub(r"^(посчитай|вычисли|сколько будет|реши)\s+", "", candidate)
+        candidate = candidate.replace("^", "**").replace("×", "*").replace("÷", "/")
+        if not re.fullmatch(r"[0-9a-z_+\-*/().,\s%*]+", candidate):
             return None
-        except Exception as e:
-            print(f"Wikipedia error: {e}")
+        if not re.search(r"\d", candidate):
+            return None
+        candidate = candidate.replace(",", ".")
+        try:
+            tree = ast.parse(candidate, mode="eval")
+            result = cls.evaluate_node(tree)
+            if isinstance(result, float) and result.is_integer():
+                result = int(result)
+            return f"🧮 Результат: {result}"
+        except Exception:
             return None
 
 
-class DuckDuckGoSearcher:
+# ------------------------------------------------------------
+# Search
+# ------------------------------------------------------------
+
+class WebSearch:
     def __init__(self):
         self.session = requests.Session()
-        self.session.headers.update({'User-Agent': random.choice(USER_AGENTS), 'Accept': 'text/html,application/xhtml+xml', 'Accept-Language': 'ru-RU,ru;q=0.9'})
-    
-    def search(self, query):
+        self.session.headers.update({
+            "User-Agent": random.choice(USER_AGENTS),
+            "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.7",
+        })
+
+    def wikipedia(self, query):
         try:
-            url = "https://lite.duckduckgo.com/lite/"
-            params = {"q": query}
-            response = self.session.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
+            params = {
+                "action": "query",
+                "list": "search",
+                "srsearch": query,
+                "format": "json",
+                "srlimit": 3,
+                "utf8": 1,
+            }
+            r = self.session.get(WIKI_API, params=params, timeout=7)
+            r.raise_for_status()
+            results = r.json().get("query", {}).get("search", [])
+            if not results:
+                return None
+
+            title = results[0]["title"]
+            params = {
+                "action": "query",
+                "prop": "extracts|info",
+                "exintro": True,
+                "explaintext": True,
+                "inprop": "url",
+                "titles": title,
+                "format": "json",
+                "utf8": 1,
+            }
+            r = self.session.get(WIKI_API, params=params, timeout=7)
+            r.raise_for_status()
+            pages = r.json().get("query", {}).get("pages", {})
+            page = next(iter(pages.values()), {})
+            extract = re.sub(r"\s+", " ", page.get("extract", "")).strip()
+            if not extract:
+                return None
+            return {
+                "source": "Википедия",
+                "title": title,
+                "text": extract[:1400],
+                "url": page.get("fullurl", ""),
+            }
+        except Exception:
+            return None
+
+    def duckduckgo(self, query):
+        try:
+            r = self.session.get(
+                "https://lite.duckduckgo.com/lite/",
+                params={"q": query},
+                timeout=8,
+            )
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            rows = soup.select("tr")
             snippets = []
-            
-            result_rows = soup.find_all('tr', class_='result')
-            for row in result_rows:
-                snippet_td = row.find('td', class_='result-snippet')
-                if snippet_td:
-                    text = snippet_td.get_text(strip=True)
-                    if not UltraSmartFilter.is_junk(text) and UltraSmartFilter.is_knowledge(text):
-                        snippets.append(text)
-            
+            for row in rows:
+                text = row.get_text(" ", strip=True)
+                if len(text) >= 80 and query.lower().split()[0] in text.lower():
+                    snippets.append(text)
+                if len(snippets) >= 3:
+                    break
             if not snippets:
-                alt_snippets = soup.select('td.result-snippet, td.result__snippet')
-                for elem in alt_snippets:
-                    text = elem.get_text(strip=True)
-                    if not UltraSmartFilter.is_junk(text) and UltraSmartFilter.is_knowledge(text):
-                        snippets.append(text)
-            
-            if not snippets:
-                all_tds = soup.find_all('td')
-                for td in all_tds:
-                    text = td.get_text(strip=True)
-                    if (len(text) > 30 and not UltraSmartFilter.is_junk(text) and UltraSmartFilter.is_knowledge(text)):
-                        snippets.append(text)
-                        if len(snippets) >= 3: break
-            
-            if snippets:
-                combined = ' '.join(snippets[:2])
-                essence = UltraSmartFilter.extract_essence(combined, query)
-                return essence
-            return None
-        except Exception as e:
-            print(f"DuckDuckGo error: {e}")
+                return None
+            return {
+                "source": "DuckDuckGo",
+                "title": "Результаты поиска",
+                "text": " ".join(snippets)[:1600],
+                "url": "",
+            }
+        except Exception:
             return None
 
 
-class MathSolver:
-    @staticmethod
-    def solve(expression):
-        try:
-            clean_expr = re.sub(r'[^0-9+\-*/().\s]', '', expression)
-            if not clean_expr: return None
-            result = eval(clean_expr)
-            return f"🧮 Результат вычисления: {expression} = {result}"
-        except:
-            return None
-
+# ------------------------------------------------------------
+# Smart engine
+# ------------------------------------------------------------
 
 class SmartAnswerEngine:
     def __init__(self):
-        self.wiki_searcher = WikipediaSearcher()
-        self.ddg_searcher = DuckDuckGoSearcher()
-        self.context_memory = deque(maxlen=5)
-    
-    def update_context(self, query, answer):
-        self.context_memory.append({"q": query.lower(), "a": answer})
+        self.web = WebSearch()
+        self.context = deque(maxlen=8)
+        self.learned = {}
 
-    def check_context(self, query):
-        query_lower = query.lower()
-        context_triggers = ["она", "он", "они", "это", "там", "сколько стоит", "где находится", "расскажи подробнее"]
-        
-        if any(trigger in query_lower for trigger in context_triggers):
-            if self.context_memory:
-                last_topic = self.context_memory[-1]["q"]
-                return f"{last_topic} {query}"
+    @staticmethod
+    def normalize(text):
+        text = text.lower().strip()
+        text = re.sub(r"[?!.,:;]+$", "", text)
+        text = re.sub(r"\s+", " ", text)
+        return text
+
+    def remember(self, query, answer):
+        self.context.append({"q": query, "a": answer})
+
+    def context_query(self, query):
+        q = self.normalize(query)
+        pronouns = (
+            "он", "она", "они", "это", "этот", "эта", "там", "тогда",
+            "подробнее", "подробней", "расскажи еще", "а почему", "а как",
+            "а где", "а когда", "что насчет этого",
+        )
+        if self.context and any(q.startswith(x) or f" {x}" in q for x in pronouns):
+            previous = self.context[-1]["q"]
+            return f"{previous}. {query}"
         return None
 
-    def get_builtin_answer(self, query):
-        query_lower = query.lower().strip().rstrip('?!.')
-        
-        if query_lower in BUILTIN_KNOWLEDGE:
-            return BUILTIN_KNOWLEDGE[query_lower]
-        
-        best_match = None
-        max_len = 0
+    def builtin(self, query):
+        q = self.normalize(query)
+        q = ALIASES.get(q, q)
+
+        if q in BUILTIN_KNOWLEDGE:
+            return BUILTIN_KNOWLEDGE[q]
+
+        # Exact key phrase inside a longer request.
+        matches = [(k, v) for k, v in BUILTIN_KNOWLEDGE.items() if k in q]
+        if matches:
+            matches.sort(key=lambda x: len(x[0]), reverse=True)
+            return matches[0][1]
+
+        # Lightweight word-overlap retrieval.
+        query_words = set(re.findall(r"[а-яёa-z0-9]+", q))
+        best = None
+        best_score = 0.0
         for key, value in BUILTIN_KNOWLEDGE.items():
-            if key in query_lower and len(key) > max_len:
-                best_match = value
-                max_len = len(key)
-        
-        return best_match
+            key_words = set(re.findall(r"[а-яёa-z0-9]+", key))
+            if not key_words:
+                continue
+            score = len(query_words & key_words) / len(key_words)
+            if score > best_score:
+                best_score = score
+                best = value
+        return best if best_score >= 0.65 else None
 
-    def get_answer(self, query):
-        
-        math_res = MathSolver.solve(query)
-        if math_res:
-            return math_res
+    def learn_from_local(self, query):
+        q = self.normalize(query)
+        if q in self.learned:
+            return self.learned[q]
+        return None
 
-        contextual_query = self.check_context(query)
-        search_query = contextual_query if contextual_query else query
-        
-        builtin_answer = self.get_builtin_answer(search_query)
-        if builtin_answer:
-            final_answer = f"🧠 Из моей базы знаний:\n{builtin_answer}"
-            self.update_context(query, final_answer)
-            return final_answer
-        
-        answers = []
-        
-        wiki_answer = self.wiki_searcher.search(search_query)
-        if wiki_answer:
-            answers.append(("wiki", wiki_answer))
-        
-        ddg_answer = self.ddg_searcher.search(search_query)
-        if ddg_answer:
-            answers.append(("ddg", ddg_answer))
-        
-        if not answers:
-            return None
-        
-        for source_type, answer in answers:
-            if source_type == "wiki": 
-                final = f"📚 Из Википедии:\n{answer}"
-                self.update_context(query, final)
-                return final
-            elif source_type == "ddg": 
-                final = f"🔍 Из интернета:\n{answer}"
-                self.update_context(query, final)
-                return final
-        
+    def answer(self, query):
+        math_answer = SafeMath.solve(query)
+        if math_answer:
+            self.remember(query, math_answer)
+            return math_answer
+
+        q = self.context_query(query) or query
+
+        local = self.learn_from_local(query)
+        if local:
+            answer = f"🧠 Из локальной памяти:\n{local}"
+            self.remember(query, answer)
+            return answer
+
+        builtin = self.builtin(q)
+        if builtin:
+            answer = f"🧠 Из базы знаний:\n{builtin}"
+            self.remember(query, answer)
+            return answer
+
+        wiki = self.web.wikipedia(q)
+        if wiki:
+            answer = f"📚 {wiki['title']}\n\n{wiki['text']}"
+            self.remember(query, answer)
+            return answer
+
+        ddg = self.web.duckduckgo(q)
+        if ddg:
+            answer = f"🔎 {ddg['title']}\n\n{ddg['text']}"
+            self.remember(query, answer)
+            return answer
+
         return None
 
 
-class ChatHistoryManager:
-    def __init__(self, filepath):
-        self.filepath = filepath
+# ------------------------------------------------------------
+# Persistence
+# ------------------------------------------------------------
+
+class ChatHistory:
+    def __init__(self, path):
+        self.path = path
         self.history = []
-        self.load_history()
-    
-    def load_history(self):
+        self.load()
+
+    def load(self):
         try:
-            if os.path.exists(self.filepath):
-                with open(self.filepath, 'r', encoding='utf-8') as f:
-                    self.history = json.load(f)
-        except Exception as e:
-            print(f"Error loading chat history: {e}")
+            if os.path.exists(self.path):
+                with open(self.path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        self.history = data[-200:]
+        except Exception:
             self.history = []
-    
-    def save_history(self):
+
+    def save(self):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
         try:
-            os.makedirs(os.path.dirname(self.filepath), exist_ok=True)
-            with open(self.filepath, 'w', encoding='utf-8') as f:
-                json.dump(self.history, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"Error saving chat history: {e}")
-    
-    def add_message(self, role, content):
-        self.history.append({'role': role, 'content': content, 'timestamp': time.time()})
-        if len(self.history) > 100: self.history = self.history[-100:]
-        self.save_history()
-    
-    def get_history(self):
-        return self.history
-    
-    def clear_history(self):
+            with open(self.path, "w", encoding="utf-8") as f:
+                json.dump(self.history[-200:], f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def add(self, role, content):
+        self.history.append({
+            "role": role,
+            "content": content,
+            "timestamp": time.time(),
+        })
+        self.history = self.history[-200:]
+        self.save()
+
+    def clear(self):
         self.history = []
-        self.save_history()
+        self.save()
 
 
-class UpdateChecker:
-    def __init__(self, current_version, repo_url):
-        self.current_version = current_version
-        self.repo_api_url = "https://api.github.com/repos/matvey2222222222/MeowAI/releases"
-        self.repo_url = repo_url
+# ------------------------------------------------------------
+# Main UI
+# ------------------------------------------------------------
 
-    def _parse_version(self, version_str):
-        clean = re.sub(r'[^0-9.]', '', version_str)
-        parts = clean.split('.')
-        try:
-            return tuple(int(x) for x in parts if x)
-        except:
-            return (0, 0, 0)
+class MeowAIApp:
+    BG = "#0b0f14"
+    PANEL = "#111821"
+    PANEL2 = "#151e29"
+    INPUT = "#0f1720"
+    TEXT = "#e8eef7"
+    MUTED = "#7f8b9b"
+    ACCENT = "#ffd166"
+    ACCENT2 = "#67e8f9"
+    GREEN = "#62e884"
+    RED = "#ff6b6b"
+    BORDER = "#243141"
 
-    def check_for_updates(self):
-        try:
-            headers = {'Accept': 'application/vnd.github.v3+json'}
-            response = requests.get(self.repo_api_url, headers=headers, timeout=10)
-            response.raise_for_status()
-            releases = response.json()
-            
-            if not releases:
-                return None
-            
-            latest_release = releases[0]
-            tag_name = latest_release.get('tag_name', '')
-            name = latest_release.get('name', tag_name)
-            is_prerelease = latest_release.get('prerelease', False)
-            html_url = latest_release.get('html_url', self.repo_url)
-            
-            current_ver_tuple = self._parse_version(self.current_version)
-            latest_ver_tuple = self._parse_version(tag_name)
-            
-            if latest_ver_tuple > current_ver_tuple:
-                return {
-                    "available": True,
-                    "version": tag_name,
-                    "name": name,
-                    "is_prerelease": is_prerelease,
-                    "url": html_url
-                }
-            else:
-                return {"available": False}
-                
-        except Exception as e:
-            print(f"Update check error: {e}")
-            return {"error": str(e)}
-
-
-class MeowAIChat:
     def __init__(self, root):
         self.root = root
-        self.root.title(f"MeowAI {CURRENT_VERSION}")
-        self.root.geometry("700x600")
-        self.root.minsize(600, 500)
-        self.root.configure(bg='#1a1a1a')
-        
-        self.answer_engine = SmartAnswerEngine()
-        self.update_checker = UpdateChecker(CURRENT_VERSION, GITHUB_REPO_URL)
-        self.ensure_directories()
-        self.chat_history = ChatHistoryManager(CHAT_HISTORY_FILE)
-        
-        self.font_conv = font.Font(family="Segoe UI", size=11)
-        self.font_user = font.Font(family="Segoe UI", size=11, weight="bold")
-        self.font_ai = font.Font(family="Segoe UI", size=11)
-        
-        header_frame = tk.Frame(root, bg='#1a1a1a')
-        header_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        header = tk.Label(header_frame, text=f"🐱 MeowAI {CURRENT_VERSION}", 
-                         font=("Segoe UI", 18, "bold"), fg="#ffcc00", bg="#1a1a1a")
-        header.pack(side=tk.LEFT)
-        
-        status_label = tk.Label(header_frame, text="● Online", 
-                               font=("Segoe UI", 10), fg="#4caf50", bg="#1a1a1a")
-        status_label.pack(side=tk.RIGHT)
-        
-        chat_frame = tk.Frame(root, bg='#1a1a1a')
-        chat_frame.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
-        
-        self.chat_area = scrolledtext.ScrolledText(chat_frame, wrap=tk.WORD,
-                                                  bg='#2d2d2d', fg='#ffffff',
-                                                  font=self.font_conv,
-                                                  insertbackground='white',
-                                                  relief=tk.FLAT, borderwidth=0,
-                                                  padx=10, pady=10)
-        self.chat_area.pack(fill=tk.BOTH, expand=True)
-        self.chat_area.config(state=tk.DISABLED)
-        
-        self.chat_area.tag_config('user_tag', foreground='#4fc3f7', font=self.font_user)
-        self.chat_area.tag_config('user_text', foreground='#ffffff', font=self.font_conv)
-        self.chat_area.tag_config('ai_tag', foreground='#ffcc00', font=self.font_ai)
-        self.chat_area.tag_config('ai_text', foreground='#e0e0e0', font=self.font_conv)
-        self.chat_area.tag_config('system_tag', foreground='#9e9e9e', font=self.font_conv)
-        self.chat_area.tag_config('error_tag', foreground='#ff5252', font=self.font_conv)
-        self.chat_area.tag_config('link_tag', foreground='#4fc3f7', font=self.font_conv, underline=True)
-        
-        input_frame = tk.Frame(root, bg='#1a1a1a')
-        input_frame.pack(padx=10, pady=10, fill=tk.X)
-        
-        self.input_field = tk.Text(input_frame, height=3, wrap=tk.WORD,
-                                  bg='#3c3c3c', fg='white',
-                                  font=self.font_conv,
-                                  insertbackground='white',
-                                  relief=tk.FLAT, borderwidth=0,
-                                  padx=10, pady=10)
-        self.input_field.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.input_field.bind('<Return>', self.send_message_event)
-        self.input_field.bind('<Control-Return>', lambda e: self.input_field.insert(tk.END, '\n'))
-        
-        send_btn_frame = tk.Frame(input_frame, bg='#1a1a1a')
-        send_btn_frame.pack(side=tk.RIGHT, padx=(10,0))
-        
-        self.send_btn = tk.Button(send_btn_frame, text="➤", 
-                                 command=self.send_message,
-                                 bg='#ffcc00', fg='#1a1a1a', 
-                                 font=("Segoe UI", 14, "bold"),
-                                 relief=tk.FLAT, padx=15, pady=10, width=2)
-        self.send_btn.pack()
-        
-        btns_frame = tk.Frame(send_btn_frame, bg='#1a1a1a')
-        btns_frame.pack(pady=(5,0))
-        
-        clear_btn = tk.Button(btns_frame, text="Очистить", 
-                             command=self.clear_chat,
-                             bg='#666666', fg='white', 
-                             font=("Segoe UI", 9),
-                             relief=tk.FLAT, padx=10, pady=2)
-        clear_btn.pack(side=tk.LEFT, padx=2)
-        
-        update_btn = tk.Button(btns_frame, text="Обновления", 
-                             command=self.check_updates_ui,
-                             bg='#2196f3', fg='white', 
-                             font=("Segoe UI", 9),
-                             relief=tk.FLAT, padx=10, pady=2)
-        update_btn.pack(side=tk.LEFT, padx=2)
-        
-        self.db = self.load_db()
-        
-        self.display_message("MeowAI", 
-                           f"Привет! Я MeowAI {CURRENT_VERSION} 🐱\n\n"
-                           "Я стал умнее и стабильнее!\n\n"
-                           "Новые возможности:\n"
-                           "• 🧠 Понимаю контекст разговора\n"
-                           "• 🧮 Решаю математические примеры\n"
-                           "• 🔍 Еще лучше фильтрую мусор\n"
-                           "• 🔄 Проверяю обновления через GitHub\n\n"
-                           "Задавай вопросы!")
-        
-        self.load_and_display_history()
+        self.root.title(f"{APP_NAME} {CURRENT_VERSION}")
+        self.root.geometry("1050x720")
+        self.root.minsize(800, 580)
+        self.root.configure(bg=self.BG)
 
-    def check_updates_ui(self):
-        self.display_message("System", "🔄 Проверка наличия обновлений...", 'system')
-        threading.Thread(target=self._do_check_updates, daemon=True).start()
+        os.makedirs(DB_DIR, exist_ok=True)
 
-    def _do_check_updates(self):
-        result = self.update_checker.check_for_updates()
-        
-        if result is None:
-            self.root.after(0, lambda: self.display_message("System", "❌ Не удалось подключиться к GitHub.", 'error'))
-            return
+        self.engine = SmartAnswerEngine()
+        self.history = ChatHistory(CHAT_HISTORY_FILE)
+        self.local_db = self.load_db()
 
-        if "error" in result:
-            self.root.after(0, lambda: self.display_message("System", f"❌ Ошибка проверки: {result['error']}", 'error'))
-            return
+        self.font_ui = ("Segoe UI", 10)
+        self.font_body = ("Segoe UI", 11)
+        self.font_small = ("Segoe UI", 9)
+        self.font_title = ("Segoe UI Semibold", 18)
 
-        if result["available"]:
-            msg = (f"🎉 Доступно новое обновление!\n\n"
-                   f"Версия: {result['version']}\n"
-                   f"Название: {result['name']}\n"
-                   f"Тип: {'Тестовая (Pre-release)' if result['is_prerelease'] else 'Стабильная'}\n\n"
-                   f"Скачать можно по ссылке:")
-            
-            self.root.after(0, lambda: self._show_update_available(msg, result['url']))
-        else:
-            self.root.after(0, lambda: self.display_message("System", "✅ У вас установлена последняя версия!", 'system'))
+        self.setup_ui()
+        self.load_history_to_ui()
+        self.show_welcome()
 
-    def _show_update_available(self, msg, url):
-        self.chat_area.config(state=tk.NORMAL)
-        self.chat_area.insert(tk.END, f"⚙️ System: ", 'system_tag')
-        self.chat_area.insert(tk.END, f"{msg}\n", 'system_tag')
-        self.chat_area.insert(tk.END, f"🔗 {url}\n\n", 'link_tag')
-        self.chat_area.see(tk.END)
-        self.chat_area.config(state=tk.DISABLED)
-
-    def load_and_display_history(self):
-        history = self.chat_history.get_history()
-        if history:
-            self.display_message("System", "--- Загружена история диалога ---", 'system')
-            messages_to_show = history[-20:]
-            for msg in messages_to_show:
-                if msg['role'] == 'user':
-                    self.chat_area.config(state=tk.NORMAL)
-                    self.chat_area.insert(tk.END, f"🙋 Ты: ", 'user_tag')
-                    self.chat_area.insert(tk.END, f"{msg['content']}\n\n", 'user_text')
-                    self.chat_area.config(state=tk.DISABLED)
-                elif msg['role'] == 'assistant':
-                    self.chat_area.config(state=tk.NORMAL)
-                    self.chat_area.insert(tk.END, f"🐱 MeowAI: ", 'ai_tag')
-                    self.chat_area.insert(tk.END, f"{msg['content']}\n\n", 'ai_text')
-                    self.chat_area.config(state=tk.DISABLED)
-            self.chat_area.see(tk.END)
-
-    def ensure_directories(self):
-        if not os.path.exists(DB_DIR): os.makedirs(DB_DIR)
-    
     def load_db(self):
         try:
             if os.path.exists(DB_FILE):
-                with open(DB_FILE, 'r', encoding='utf-8') as f: return json.load(f)
-        except Exception: pass
+                with open(DB_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data if isinstance(data, dict) else {}
+        except Exception:
+            pass
         return {}
-    
+
     def save_db(self):
         try:
-            with open(DB_FILE, 'w', encoding='utf-8') as f: json.dump(self.db, f, ensure_ascii=False, indent=2)
-        except Exception as e: print(f"Error saving database: {e}")
-    
-    def display_message(self, sender, text, tag_type='normal'):
-        self.chat_area.config(state=tk.NORMAL)
+            with open(DB_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.local_db, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def setup_ui(self):
+        # Header
+        header = tk.Frame(self.root, bg=self.PANEL, height=72)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+
+        brand = tk.Frame(header, bg=self.PANEL)
+        brand.pack(side="left", padx=22)
+
+        tk.Label(
+            brand, text="🐱", bg=self.PANEL, fg=self.ACCENT,
+            font=("Segoe UI Emoji", 25)
+        ).pack(side="left", padx=(0, 10))
+
+        title_box = tk.Frame(brand, bg=self.PANEL)
+        title_box.pack(side="left", pady=8)
+        tk.Label(
+            title_box, text="MeowAI", bg=self.PANEL, fg=self.TEXT,
+            font=self.font_title
+        ).pack(anchor="w")
+        tk.Label(
+            title_box, text=f"SMART ASSISTANT  •  v{CURRENT_VERSION}",
+            bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 8, "bold")
+        ).pack(anchor="w")
+
+        self.status = tk.Label(
+            header, text="● ONLINE", bg=self.PANEL, fg=self.GREEN,
+            font=("Segoe UI", 9, "bold")
+        )
+        self.status.pack(side="right", padx=24)
+
+        # Main
+        main = tk.Frame(self.root, bg=self.BG)
+        main.pack(fill="both", expand=True, padx=16, pady=14)
+
+        # Side panel
+        side = tk.Frame(
+            main, bg=self.PANEL, width=205,
+            highlightbackground=self.BORDER, highlightthickness=1
+        )
+        side.pack(side="left", fill="y", padx=(0, 12))
+        side.pack_propagate(False)
+
+        tk.Label(
+            side, text="ВОЗМОЖНОСТИ", bg=self.PANEL, fg=self.MUTED,
+            font=("Segoe UI", 8, "bold")
+        ).pack(anchor="w", padx=16, pady=(18, 10))
+
+        features = [
+            ("🧠", "База знаний"),
+            ("🔎", "Веб-поиск"),
+            ("🧮", "Математика"),
+            ("💬", "Контекст"),
+            ("💾", "Память"),
+            ("🕒", "Дата и время"),
+        ]
+        for icon, text in features:
+            row = tk.Frame(side, bg=self.PANEL)
+            row.pack(fill="x", padx=10, pady=2)
+            tk.Label(row, text=icon, bg=self.PANEL, fg=self.TEXT,
+                     font=("Segoe UI Emoji", 12)).pack(side="left", padx=6, pady=5)
+            tk.Label(row, text=text, bg=self.PANEL, fg=self.TEXT,
+                     font=self.font_ui).pack(side="left")
+
+        tk.Label(
+            side, text="БЫСТРЫЕ КОМАНДЫ", bg=self.PANEL, fg=self.MUTED,
+            font=("Segoe UI", 8, "bold")
+        ).pack(anchor="w", padx=16, pady=(22, 8))
+
+        for label, command in [
+            ("🧹 Очистить чат", self.clear_chat),
+            ("🕒 Текущее время", lambda: self.ask("который сейчас час")),
+            ("🧮 Калькулятор", lambda: self.ask("2 + 2 * 10")),
+            ("🔄 Проверить обновления", self.check_updates),
+        ]:
+            self.side_button(side, label, command)
+
+        # Chat area
+        center = tk.Frame(main, bg=self.BG)
+        center.pack(side="left", fill="both", expand=True)
+
+        chat_panel = tk.Frame(
+            center, bg=self.PANEL,
+            highlightbackground=self.BORDER, highlightthickness=1
+        )
+        chat_panel.pack(fill="both", expand=True)
+
+        self.chat = scrolledtext.ScrolledText(
+            chat_panel, wrap=tk.WORD,
+            bg=self.PANEL, fg=self.TEXT,
+            insertbackground=self.TEXT,
+            selectbackground="#30445a",
+            relief="flat", borderwidth=0,
+            padx=22, pady=18,
+            font=self.font_body
+        )
+        self.chat.pack(fill="both", expand=True)
+        self.chat.configure(state="disabled")
+
+        self.chat.tag_config("user_name", foreground=self.ACCENT2,
+                             font=("Segoe UI Semibold", 10))
+        self.chat.tag_config("ai_name", foreground=self.ACCENT,
+                             font=("Segoe UI Semibold", 10))
+        self.chat.tag_config("system", foreground=self.MUTED,
+                             font=self.font_small)
+        self.chat.tag_config("body", foreground=self.TEXT, font=self.font_body)
+        self.chat.tag_config("error", foreground=self.RED, font=self.font_body)
+        self.chat.tag_config("divider", foreground=self.BORDER)
+
+        # Composer
+        composer = tk.Frame(center, bg=self.BG)
+        composer.pack(fill="x", pady=(10, 0))
+
+        input_panel = tk.Frame(
+            composer, bg=self.INPUT,
+            highlightbackground=self.BORDER, highlightthickness=1
+        )
+        input_panel.pack(fill="x")
+
+        self.input = tk.Text(
+            input_panel, height=3, wrap=tk.WORD,
+            bg=self.INPUT, fg=self.TEXT,
+            insertbackground=self.ACCENT,
+            relief="flat", borderwidth=0,
+            padx=14, pady=12, font=self.font_body
+        )
+        self.input.pack(side="left", fill="both", expand=True)
+        self.input.bind("<Return>", self.on_enter)
+
+        send = tk.Button(
+            input_panel, text="➤", command=self.send,
+            bg=self.ACCENT, fg="#17120a",
+            activebackground="#ffe39a", activeforeground="#17120a",
+            relief="flat", borderwidth=0,
+            font=("Segoe UI", 16, "bold"),
+            cursor="hand2", width=4
+        )
+        send.pack(side="right", padx=8, pady=8, fill="y")
+
+        tk.Label(
+            composer,
+            text="Enter — отправить   •   Ctrl+Enter — новая строка   •   Ответы сохраняются локально",
+            bg=self.BG, fg=self.MUTED, font=("Segoe UI", 8)
+        ).pack(anchor="w", pady=(5, 0))
+
+    def side_button(self, parent, text, command):
+        btn = tk.Button(
+            parent, text=text, command=command,
+            anchor="w", bg=self.PANEL2, fg=self.TEXT,
+            activebackground="#223143", activeforeground=self.ACCENT,
+            relief="flat", borderwidth=0,
+            font=self.font_small, cursor="hand2",
+            padx=10, pady=7
+        )
+        btn.pack(fill="x", padx=10, pady=2)
+
+    def write(self, sender, text, kind="ai"):
+        self.chat.configure(state="normal")
         if sender == "Ты":
-            self.chat_area.insert(tk.END, f"🙋 {sender}: ", 'user_tag')
-            self.chat_area.insert(tk.END, f"{text}\n\n", 'user_text')
+            self.chat.insert("end", "YOU  ", "user_name")
         elif sender == "MeowAI":
-            self.chat_area.insert(tk.END, f"🐱 {sender}: ", 'ai_tag')
-            self.chat_area.insert(tk.END, f"{text}\n\n", 'ai_text')
+            self.chat.insert("end", "MEOWAI  ", "ai_name")
         else:
-            self.chat_area.insert(tk.END, f"⚙️ {sender}: ", 'system_tag')
-            self.chat_area.insert(tk.END, f"{text}\n\n", 'system_tag')
-        
-        self.chat_area.see(tk.END)
-        self.chat_area.config(state=tk.DISABLED)
-    
-    def clear_chat(self):
-        self.chat_area.config(state=tk.NORMAL)
-        self.chat_area.delete('1.0', tk.END)
-        self.chat_area.config(state=tk.DISABLED)
-        self.chat_history.clear_history()
-        self.display_message("MeowAI", "Чат и история очищены. Готов к новым вопросам!")
-    
-    def send_message(self):
-        user_input = self.input_field.get("1.0", tk.END).strip()
-        if not user_input: return
-        
-        self.input_field.delete("1.0", tk.END)
-        self.display_message("Ты", user_input)
-        self.chat_history.add_message('user', user_input)
-        
-        if user_input.lower() in ('выход', 'exit', 'quit'):
-            self.display_message("MeowAI", "До свидания! Рад был помочь! 🐱")
-            self.root.after(1000, self.root.destroy)
+            self.chat.insert("end", "SYSTEM  ", "system")
+        self.chat.insert("end", text + "\n", "body" if kind != "error" else "error")
+        self.chat.insert("end", "────────────────────────────────────────\n", "divider")
+        self.chat.see("end")
+        self.chat.configure(state="disabled")
+
+    def show_welcome(self):
+        if not self.history.history:
+            self.write(
+                "MeowAI",
+                "Привет! Я MeowAI 2.0 🐱\n\n"
+                "Я стал умнее: лучше ищу знания, понимаю короткие продолжения диалога, "
+                "умею считать выражения и сохраняю историю.\n\n"
+                "Попробуй: «что такое нейросеть», «кто такой Гагарин», "
+                "«sqrt(144) + 5» или «расскажи подробнее».",
+            )
+
+    def load_history_to_ui(self):
+        if not self.history.history:
             return
-        
-        if user_input.lower() in ('очистить', 'clear'):
+        self.chat.configure(state="normal")
+        self.chat.delete("1.0", "end")
+        self.chat.configure(state="disabled")
+        for item in self.history.history[-30:]:
+            sender = "Ты" if item.get("role") == "user" else "MeowAI"
+            self.write(sender, item.get("content", ""))
+
+    def on_enter(self, event):
+        if event.state & 0x4:
+            return
+        self.send()
+        return "break"
+
+    def ask(self, text):
+        self.input.delete("1.0", "end")
+        self.input.insert("1.0", text)
+        self.send()
+
+    def send(self):
+        query = self.input.get("1.0", "end").strip()
+        if not query:
+            return
+
+        self.input.delete("1.0", "end")
+        self.write("Ты", query)
+        self.history.add("user", query)
+
+        low = query.lower().strip()
+        if low in {"выход", "exit", "quit"}:
+            self.write("MeowAI", "До встречи! 🐱")
+            self.root.after(600, self.root.destroy)
+            return
+
+        if low in {"очистить", "clear", "очистить чат"}:
             self.clear_chat()
             return
-        
-        threading.Thread(target=self.process_query, args=(user_input,), daemon=True).start()
-    
-    def send_message_event(self, event):
-        if event.state & 0x4: return
-        self.send_message()
-        return "break"
-    
-    def process_query(self, user_input):
+
+        if low in {"время", "который час", "который сейчас час", "дата", "сегодня"}:
+            now = dt.datetime.now()
+            answer = f"🕒 Сейчас {now:%H:%M:%S}, {now:%d.%m.%Y}."
+            self.write("MeowAI", answer)
+            self.history.add("assistant", answer)
+            return
+
+        self.status.configure(text="● THINKING...", fg=self.ACCENT)
+        self.write("MeowAI", "🤔 Анализирую запрос…")
+        threading.Thread(target=self.process, args=(query,), daemon=True).start()
+
+    def process(self, query):
         try:
-            lower_input = user_input.lower()
-            
-            simple_responses = {
-                'привет': 'Привет! Рад тебя видеть. Чем могу помочь сегодня?',
-                'здравствуй': 'Здравствуй! Как твои дела?',
-                'как дела': 'У меня всё отлично! Работаю, помогаю пользователям. А у тебя как?',
-                'спасибо': 'Пожалуйста! Всегда рад помочь.',
-                'пока': 'Пока! Было приятно пообщаться. Заходи ещё!'
-            }
-            
-            for key, response in simple_responses.items():
-                if key in lower_input and len(lower_input.split()) < 4:
-                    self.root.after(0, lambda: self.display_message("MeowAI", response))
-                    self.chat_history.add_message('assistant', response)
-                    return
-            
-            self.root.after(0, lambda: self.display_message("MeowAI", "🤔 Думаю..."))
-            
-            answer = self.answer_engine.get_answer(user_input)
-            
+            # Remove temporary thinking line by leaving it as a visible activity record.
+            answer = self.engine.answer(query)
+
             if answer:
-                self.root.after(0, lambda: self.display_message("MeowAI", answer))
-                
-                if "Из моей базы знаний" not in answer:
-                    clean_answer = re.sub(r'(📚 Из Википедии:|🔍 Из интернета:|🧮 Результат вычисления:)\n', '', answer)
-                    self.db[user_input] = clean_answer.strip()
-                    self.save_db()
-                
-                self.chat_history.add_message('assistant', answer)
+                # Save useful answers for later local retrieval.
+                key = SmartAnswerEngine.normalize(query)
+                self.local_db[key] = answer
+                if len(self.local_db) > 300:
+                    self.local_db = dict(list(self.local_db.items())[-300:])
+                self.save_db()
+
+                self.root.after(0, lambda: self.finish_answer(answer))
             else:
-                answer = ("😕 Не нашел полезной информации.\n\n"
-                         "Попробуйте:\n"
-                         "• Переформулировать вопрос\n"
-                         "• Использовать более конкретные термины\n"
-                         "• Задать вопрос проще")
-                self.root.after(0, lambda: self.display_message("MeowAI", answer))
-                self.chat_history.add_message('assistant', answer)
-                
-        except Exception as e:
-            error_msg = f"❌ Ошибка: {str(e)}"
-            print(traceback.format_exc())
-            self.root.after(0, lambda: self.display_message("MeowAI", error_msg, 'error'))
+                fallback = (
+                    "Я пока не нашёл достаточно уверенного ответа.\n\n"
+                    "Попробуй уточнить тему, добавить имя/термин или задать вопрос "
+                    "другими словами."
+                )
+                self.root.after(0, lambda: self.finish_answer(fallback))
+        except Exception as exc:
+            traceback.print_exc()
+            self.root.after(
+                0,
+                lambda: self.finish_answer(f"❌ Ошибка обработки: {exc}", error=True)
+            )
+
+    def finish_answer(self, answer, error=False):
+        self.write("MeowAI", answer, "error" if error else "ai")
+        self.history.add("assistant", answer)
+        self.status.configure(text="● ONLINE", fg=self.GREEN)
+
+    def clear_chat(self):
+        self.history.clear()
+        self.engine.context.clear()
+        self.chat.configure(state="normal")
+        self.chat.delete("1.0", "end")
+        self.chat.configure(state="disabled")
+        self.write("MeowAI", "Чат очищен. Готов к новому разговору. 🐱")
+
+    def check_updates(self):
+        self.status.configure(text="● CHECKING...", fg=self.ACCENT)
+        self.write("SYSTEM", "Проверяю последнюю версию на GitHub…")
+        threading.Thread(target=self._update_thread, daemon=True).start()
+
+    def _update_thread(self):
+        try:
+            r = requests.get(
+                "https://api.github.com/repos/matvey2222222222/MeowAI/releases",
+                headers={"Accept": "application/vnd.github+json"},
+                timeout=8,
+            )
+            r.raise_for_status()
+            releases = r.json()
+            if not releases:
+                result = "На GitHub пока нет опубликованных релизов."
+            else:
+                latest = releases[0]
+                tag = latest.get("tag_name", "unknown")
+                url = latest.get("html_url", GITHUB_REPO_URL)
+                result = f"Последний релиз: {tag}\n{url}"
+        except Exception as exc:
+            result = f"Не удалось проверить GitHub: {exc}"
+
+        self.root.after(0, lambda: self._update_done(result))
+
+    def _update_done(self, result):
+        self.status.configure(text="● ONLINE", fg=self.GREEN)
+        self.write("SYSTEM", result)
 
 
 def main():
     root = tk.Tk()
-    app = MeowAIChat(root)
+    app = MeowAIApp(root)
     root.mainloop()
 
 
